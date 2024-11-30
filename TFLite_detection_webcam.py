@@ -23,6 +23,42 @@ import time
 from threading import Thread
 import importlib.util
 
+#  distance estimation
+REFERENCE_SIZE_PERCENT = 70.0  # Initial reference size (70% of frame)
+REFERENCE_DISTANCE = 10.0      # Known distance at reference size (10 cm)
+
+# Add these helper functions before the main loop
+def calculate_size_percent(xmin, xmax, ymin, ymax, frame_width, frame_height):
+    """Calculate how much of the frame the object occupies"""
+    object_width = xmax - xmin
+    object_height = ymax - ymin
+    object_area = object_width * object_height
+    frame_area = frame_width * frame_height
+    return (object_area / frame_area) * 100.0
+
+def calculate_center_percent(xmin, xmax, ymin, ymax, frame_width, frame_height):
+    """Calculate center position as percentage from frame center"""
+    # Calculate center points
+    center_x = (xmin + xmax) / 2
+    
+    # Convert to percentage from center (-50% to +50%)
+    x_center_percent = ((center_x - frame_width/2) / (frame_width/2)) * 100
+    
+    return x_center_percent
+
+def estimate_depth(current_size_percent):
+    """
+    Estimate depth using inverse proportion:
+    - Larger size = closer (smaller depth)
+    - Smaller size = further (larger depth)
+    """
+    if current_size_percent <= 0:
+        return float('inf')  # Avoid division by zero
+        
+    # Using inverse proportion: distance ∝ 1/size
+    estimated_depth = REFERENCE_DISTANCE * (REFERENCE_SIZE_PERCENT / current_size_percent)
+    return estimated_depth
+
 # Define VideoStream class to handle streaming of video from webcam in separate processing thread
 # Source - Adrian Rosebrock, PyImageSearch: https://www.pyimagesearch.com/2015/12/28/increasing-raspberry-pi-fps-with-python-and-opencv/
 class VideoStream:
@@ -205,6 +241,11 @@ while True:
             xmin = int(max(1,(boxes[i][1] * imW)))
             ymax = int(min(imH,(boxes[i][2] * imH)))
             xmax = int(min(imW,(boxes[i][3] * imW)))
+            
+            # Calculate size and center percentages
+            current_size_percent = calculate_size_percent(xmin, xmax, ymin, ymax, imW, imH)
+            depth = estimate_depth(current_size_percent)
+            x_center_percent = calculate_center_percent(xmin, xmax, ymin, ymax, imW, imH)
             
             cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), (10, 255, 0), 2)
 
